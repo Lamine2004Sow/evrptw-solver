@@ -61,6 +61,8 @@ def parse_args(argv=None):
                    help="directory where convergence trace CSVs are saved (one per run)")
     p.add_argument("--timeout-margin", type=float, default=60.0,
                    help="extra seconds allowed beyond --time before a run is killed")
+    p.add_argument("--opt", action="append", default=[], metavar="KEY=VALUE",
+                   help="solver option passed through to the binary (repeatable), e.g. copies=3")
     p.add_argument("--dry-run", action="store_true",
                    help="print the list of runs that would be executed and exit")
     return p.parse_args(argv)
@@ -142,6 +144,8 @@ def run_one(job, args):
     instance, method, seed = job["instance"], job["method"], job["seed"]
     cmd = [args.binary, "solve", job["path"], "--method", method,
            "--seed", str(seed), "--time", str(args.time)]
+    for kv in args.opt:
+        cmd += ["--opt", kv]
     if job["solution"]:
         cmd += ["--out", job["solution"]]
     if job["trace"]:
