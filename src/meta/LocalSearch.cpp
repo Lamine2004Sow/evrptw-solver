@@ -12,11 +12,13 @@ namespace evrptw {
 namespace {
 
 constexpr double kEps = 1e-6;
+constexpr int kRepairStations = 3;  // stations tried per slot by the station-aware evaluation
 constexpr int kMaxEliminationAttempts = 4;  // penalties 10, 100, 1000, 10000 (times start)
 
 }  // namespace
 
-LocalSearch::LocalSearch(const Instance& inst) : inst_(inst) {
+LocalSearch::LocalSearch(const Instance& inst)
+    : stationAware_(inst.numCustomers() <= kStationAwareMaxCustomers), inst_(inst) {
     const int n = inst.numNodes();
     neighbours_.assign(n, {});
     stationNeighbours_.assign(n, {});
@@ -82,6 +84,9 @@ void LocalSearch::refreshRoute(int r) {
 // Replaces route r by `replacement` (swapped, so the old buffer is reused).
 // Routes without customers are cleared.
 void LocalSearch::setRoute(int r, Route& replacement) {
+    int pos, station;  // the station detour that costOf() priced in, if any
+    repairedCost(replacement, &pos, &station);
+    if (pos >= 0) replacement.insert(replacement.begin() + pos, station);
     const bool wasNonEmpty = !routes_[r].empty();
     routes_[r].swap(replacement);
     const bool hasCustomer = std::any_of(routes_[r].begin(), routes_[r].end(),
@@ -93,8 +98,38 @@ void LocalSearch::setRoute(int r, Route& replacement) {
         if (inst_.isCustomer(j)) active_[j] = 1;
 }
 
-double LocalSearch::costOf(const Route& route) const {
-    return penalisedCost(evaluateRoute(inst_, route), w_);
+// Customer moves often only pay off if a charger detour moves with them (optimal
+// small-instance routes look like "S0 C98 S0"). Without this, such moves look
+// battery-infeasible and are rejected: the ILS missed the optimum of 5-customer
+// instances by up to 18%.
+double LocalSearch::repairedCost(const Route& route, int* pos, int* station) const {
+    const RouteEval e = evaluateRoute(inst_, route);
+    double best = penalisedCost(e, w_);
+    if (pos) *pos = -1;
+    if (!stationAware_ || e.batteryDeficit <= kEps) return best;
+
+    int bestPos = -1, bestStation = -1;
+    repairBuf_ = route;
+    for (int p = 0; p <= static_cast<int>(route.size()); ++p) {
+        const int prev = p == 0 ? inst_.depot() : route[p - 1];
+        const int next = p == static_cast<int>(route.size()) ? inst_.depot() : route[p];
+        const auto& near = stationNeighbours_[prev];
+        for (int k = 0; k < std::min<int>(kRepairStations, near.size()); ++k) {
+            const int s = near[k];
+            if (s == prev || s == next) continue;
+            repairBuf_.insert(repairBuf_.begin() + p, s);
+            const double c = penalisedCost(evaluateRoute(inst_, repairBuf_), w_);
+            repairBuf_.erase(repairBuf_.begin() + p);
+            if (c < best - kEps) {
+                best = c;
+                bestPos = p;
+                bestStation = s;
+            }
+        }
+    }
+    if (pos) *pos = bestPos;
+    if (station) *station = bestStation;
+    return best;
 }
 
 bool LocalSearch::mayOpenRoute() const { return maxVehicles_ < 0 || numNonEmpty_ < maxVehicles_; }

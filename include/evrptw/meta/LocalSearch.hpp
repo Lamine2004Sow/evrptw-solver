@@ -14,6 +14,9 @@ namespace evrptw {
 class LocalSearch {
 public:
     static constexpr int kGranularity = 20;
+    // Station-aware evaluation (see costOf) pays off on small instances, where optimal
+    // routes hinge on charger placement, but slows 100-customer runs down too much.
+    static constexpr int kStationAwareMaxCustomers = 25;
 
     explicit LocalSearch(const Instance& inst);
 
@@ -43,7 +46,11 @@ private:
     void store(Solution& sol) const;
     void refreshRoute(int r);
     void setRoute(int r, Route& replacement);
-    double costOf(const Route& route) const;
+    // Penalised cost of a candidate route. Station-aware: if the route lacks energy,
+    // the cost is that of its best single station detour, which setRoute() applies.
+    double costOf(const Route& route) const { return repairedCost(route, nullptr, nullptr); }
+    bool stationAware_ = false;
+    double repairedCost(const Route& route, int* pos, int* station) const;
     int emptyRouteSlot();
     bool mayOpenRoute() const;
 
@@ -71,7 +78,8 @@ private:
     std::vector<int> posOf_;    // per customer
     std::vector<char> active_;  // per customer: "don't look" bit, cleared when no move was found
     int numNonEmpty_ = 0;
-    Route bufA_, bufB_;         // candidate routes of the move being evaluated
+    Route bufA_, bufB_;
+    mutable Route repairBuf_;         // candidate routes of the move being evaluated
 };
 
 }  // namespace evrptw
