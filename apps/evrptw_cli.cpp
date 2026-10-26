@@ -1,7 +1,7 @@
 // Command-line entry point.
 //
 //   evrptw solve <instance> [--method ils] [--seed 1] [--time 10] [--max-vehicles K]
-//                           [--out sol.txt] [--trace trace.csv] [--verbose]
+//                           [--opt key=value ...] [--out sol.txt] [--trace trace.csv] [--verbose]
 //   evrptw check <instance> <solution>
 //   evrptw info  <instance>
 //
@@ -27,6 +27,7 @@ const char* kCsvHeader =
 int usage() {
     std::cerr << "usage:\n"
                  "  evrptw solve <instance> [--method M] [--seed S] [--time T] [--max-vehicles K]\n"
+                 "               [--opt key=value ...]  (milp: copies=N, warmstart=SECONDS)\n"
                  "               [--out FILE] [--trace FILE] [--header] [--verbose]\n"
                  "  evrptw check <instance> <solution>\n"
                  "  evrptw info  <instance>\n"
@@ -36,12 +37,19 @@ int usage() {
     return 2;
 }
 
-std::map<std::string, std::string> parseOptions(int argc, char** argv, int from) {
+// Parses "--flag value" pairs; repeated "--opt key=value" go to `solverOptions`.
+std::map<std::string, std::string> parseOptions(int argc, char** argv, int from,
+                                                std::map<std::string, std::string>& solverOptions) {
     std::map<std::string, std::string> opt;
     for (int i = from; i < argc; ++i) {
         std::string a = argv[i];
         if (a.rfind("--", 0) != 0) throw std::invalid_argument("unexpected argument: " + a);
-        if (a == "--verbose" || a == "--header") opt[a] = "1";
+        if (a == "--opt" && i + 1 < argc) {
+            std::string kv = argv[++i];
+            auto eq = kv.find('=');
+            if (eq == std::string::npos) throw std::invalid_argument("--opt expects key=value: " + kv);
+            solverOptions[kv.substr(0, eq)] = kv.substr(eq + 1);
+        } else if (a == "--verbose" || a == "--header") opt[a] = "1";
         else if (i + 1 < argc) opt[a] = argv[++i];
         else throw std::invalid_argument("missing value for " + a);
     }
@@ -51,10 +59,10 @@ std::map<std::string, std::string> parseOptions(int argc, char** argv, int from)
 int cmdSolve(int argc, char** argv) {
     if (argc < 3) return usage();
     Instance inst = Instance::load(argv[2]);
-    auto opt = parseOptions(argc, argv, 3);
+    SolverConfig cfg;
+    auto opt = parseOptions(argc, argv, 3, cfg.options);
 
     std::string method = opt.count("--method") ? opt["--method"] : "ils";
-    SolverConfig cfg;
     if (opt.count("--seed")) cfg.seed = std::stoull(opt["--seed"]);
     if (opt.count("--time")) cfg.timeLimit = std::stod(opt["--time"]);
     if (opt.count("--max-vehicles")) cfg.maxVehicles = std::stoi(opt["--max-vehicles"]);

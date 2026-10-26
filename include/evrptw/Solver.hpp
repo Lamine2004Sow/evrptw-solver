@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <random>
 #include <string>
@@ -30,6 +31,13 @@ struct SolverConfig {
     double timeLimit = 10.0;  // seconds, wall clock
     int maxVehicles = -1;     // optional fleet-size cap (epsilon-constraint); -1 = none
     bool verbose = false;
+    // Method-specific settings, e.g. {"copies": "3"} for the MILP (CLI: --opt copies=3).
+    std::map<std::string, std::string> options;
+
+    double option(const std::string& key, double fallback) const {
+        auto it = options.find(key);
+        return it == options.end() ? fallback : std::stod(it->second);
+    }
 };
 
 // One point of the convergence trace: best feasible solution found so far.

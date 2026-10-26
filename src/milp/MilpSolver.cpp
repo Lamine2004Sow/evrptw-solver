@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "evrptw/meta/ILS.hpp"
 #include "gurobi_c++.h"
 
 namespace evrptw {
@@ -12,6 +13,14 @@ namespace evrptw {
 namespace {
 
 enum class Kind { Start, Customer, Station, End };
+
+// Drops a station visit that immediately repeats the previous one (a no-op).
+Route withoutRepeatedStations(const Instance& inst, const Route& route) {
+    Route out;
+    for (int v : route)
+        if (!(inst.isStation(v) && !out.empty() && out.back() == v)) out.push_back(v);
+    return out;
+}
 
 }  // namespace
 
@@ -23,6 +32,19 @@ MilpSolver::MilpSolver(int copiesPerStation, bool hierarchical)
 SolveResult MilpSolver::solve(const Instance& inst, const SolverConfig& cfg) {
     Timer timer;
     SolveResult res;
+    const int copies = static_cast<int>(cfg.option("copies", copiesPerStation_));
+    if (copies < 1) throw std::invalid_argument("MilpSolver: copies must be >= 1");
+
+    // Optional warm start: a short ILS run provides the incumbent (MIP start).
+    Solution warm;
+    const double warmTime = cfg.option("warmstart", 0.0);
+    if (warmTime > 0) {
+        SolverConfig ilsCfg = cfg;
+        ilsCfg.timeLimit = std::min(warmTime, cfg.timeLimit);
+        ilsCfg.verbose = false;
+        SolveResult ils = IteratedLocalSearch().solve(inst, ilsCfg);
+        if (ils.feasible) warm = ils.best;
+    }
 
     try {
         // ------------------------------------------------------------ model nodes
@@ -36,7 +58,7 @@ SolveResult MilpSolver::solve(const Instance& inst, const SolverConfig& cfg) {
             kind.push_back(Kind::Customer);
         }
         for (int s = inst.firstStation(); s < inst.firstCustomer(); ++s)
-            for (int k = 0; k < copiesPerStation_; ++k) {
+            for (int k = 0; k < copies; ++k) {
                 instOf.push_back(s);
                 kind.push_back(Kind::Station);
             }
@@ -80,7 +102,7 @@ SolveResult MilpSolver::solve(const Instance& inst, const SolverConfig& cfg) {
         env.set(GRB_StringParam_LogFile, "");
         env.set(GRB_IntParam_OutputFlag, cfg.verbose ? 1 : 0);
         env.set(GRB_IntParam_Seed, static_cast<int>(cfg.seed % 2000000000ULL));
-        env.set(GRB_DoubleParam_TimeLimit, cfg.timeLimit);
+        env.set(GRB_DoubleParam_TimeLimit, std::max(1.0, cfg.timeLimit - timer.elapsed()));
         env.set(GRB_IntParam_Threads, 1);
         env.start();
 
@@ -170,6 +192,40 @@ SolveResult MilpSolver::solve(const Instance& inst, const SolverConfig& cfg) {
         }
 
         if (cfg.maxVehicles > 0) model.addConstr(vehicles <= cfg.maxVehicles);
+
+        // ------------------------------------------------------------ MIP start
+        // Maps each station visit of the warm solution to the next unused copy; the
+        // start is skipped if a station is visited more often than it has copies.
+        if (!warm.routes.empty()) {
+            std::vector<int> modelOfCustomer(inst.numNodes(), -1);
+            std::vector<std::vector<int>> freeCopies(inst.numNodes());
+            for (int i = N - 2; i > 0; --i) {
+                if (kind[i] == Kind::Customer) modelOfCustomer[instOf[i]] = i;
+                else freeCopies[instOf[i]].push_back(i);
+            }
+            std::vector<double> start(N * N, 0.0);
+            bool ok = true;
+            for (const Route& r : warm.routes) {
+                int prev = START;
+                Route path = withoutRepeatedStations(inst, r);
+                path.push_back(-1);  // end depot
+                for (int v : path) {
+                    int m;
+                    if (v < 0) m = END;
+                    else if (inst.isCustomer(v)) m = modelOfCustomer[v];
+                    else if (!freeCopies[v].empty()) { m = freeCopies[v].back(); freeCopies[v].pop_back(); }
+                    else { ok = false; break; }
+                    if (!arcOK[idx(prev, m)]) { ok = false; break; }
+                    start[idx(prev, m)] = 1.0;
+                    prev = m;
+                }
+                if (!ok) break;
+            }
+            if (ok)
+                for (int i = 0; i < N; ++i)
+                    for (int j = 0; j < N; ++j)
+                        if (arcOK[idx(i, j)]) x[idx(i, j)].set(GRB_DoubleAttr_Start, start[idx(i, j)]);
+        }
 
         // ------------------------------------------------------------ objective
         model.set(GRB_IntAttr_ModelSense, GRB_MINIMIZE);
