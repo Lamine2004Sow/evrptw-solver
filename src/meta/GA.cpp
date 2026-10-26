@@ -6,6 +6,7 @@
 #include <numeric>
 
 #include "evrptw/meta/Constructive.hpp"
+#include "evrptw/meta/ILS.hpp"
 #include "evrptw/meta/LocalSearch.hpp"
 
 namespace evrptw {
@@ -18,6 +19,7 @@ constexpr int kNbElite = 4;          // best individuals protected by the biased
 constexpr int kNbClose = 3;          // closest individuals averaged for the diversity score
 constexpr int kInitialGreedy = 5;    // initial individuals built by buildInitialSolution
 constexpr double kFleetShare = 0.3;  // share of the budget with a fleet attempt every generation
+constexpr double kIlsSeedShare = 0.25;  // share of the budget given to the ILS that seeds the fleet size
 constexpr int kFleetEvery = 50;      // generations between fleet attempts afterwards
 constexpr int kAdaptPeriod = 50;     // offspring between penalty updates
 constexpr double kMaxPenalty = 1e4;
@@ -268,6 +270,7 @@ public:
     }
 
     SolveResult run() {
+        seedFleetWithIls();
         initPopulation();
         while (timer_.elapsed() < cfg_.timeLimit) {
             ++generation_;
@@ -283,8 +286,37 @@ public:
     }
 
 private:
+    // Crossover alone is poor at removing vehicles (children of 18-route parents
+    // decode into 21+ routes), so a short ILS run fixes the fleet size first; the
+    // GA then works at that fleet size (cap_) and keeps trying to lower it.
+    void seedFleetWithIls() {
+        SolverConfig ilsCfg = cfg_;
+        ilsCfg.timeLimit = kIlsSeedShare * cfg_.timeLimit;
+        ilsCfg.verbose = false;
+        SolveResult ils = IteratedLocalSearch().solve(inst_, ilsCfg);
+        if (!ils.feasible) return;
+        best_.offer(ils.best, true);
+        tightenCap(ils.best.numVehicles());
+        pop_.add(makeIndividual(inst_, ils.best));
+    }
+
+    void tightenCap(int vehicles) {
+        if (cap_ < 0 || vehicles < cap_) cap_ = vehicles;
+    }
+
+    // Split ignores the fleet size: dissolve the shortest routes into the others
+    // (penalised insertion) until the solution fits the cap.
+    void enforceCap(Solution& sol) {
+        if (cap_ < 0) return;
+        sol.removeEmptyRoutes();
+        while (sol.numVehicles() > cap_ &&
+               dissolveRoute(inst_, sol, shortestRouteIndex(inst_, sol), penalties_.weights(), rng_)) {
+            sol.removeEmptyRoutes();
+        }
+    }
+
     void initPopulation() {
-        for (int k = 0; k < kMu; ++k) {
+        for (int k = pop_.size(); k < kMu; ++k) {
             Solution sol;
             if (k < kInitialGreedy) {
                 sol = buildInitialSolution(inst_, rng_);
@@ -300,6 +332,7 @@ private:
 
     // Local search with the current penalties, then wrapped as an individual.
     Individual educate(Solution sol) {
+        enforceCap(sol);
         ls_.run(sol, penalties_.weights(), rng_, cap_);
         Individual ind = makeIndividual(inst_, std::move(sol));
         best_.offer(ind.sol, ind.feasible);
@@ -314,6 +347,7 @@ private:
         Solution trial = best_.solution();
         if (!ls_.tryEliminateRoute(trial, rng_, timer_, cfg_.timeLimit)) return;
         best_.offer(trial, true);
+        tightenCap(trial.numVehicles());
         pop_.add(makeIndividual(inst_, std::move(trial)));
     }
 
