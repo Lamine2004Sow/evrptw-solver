@@ -25,3 +25,11 @@ Model checks made on the text: the objective is hierarchical (minimise vehicles 
 ## Gaps and open items
 - No later paper with an improved full-recharge BKS was verified. Desaulniers et al. (2016), Operations Research 64(6), was located, but its computational tables were not readable from the sources available, so no values were taken from it.
 - The Schneider et al. 2014 BKS for large instances are heuristic values, not proven optima.
+
+## Correction: rc108C5
+
+Table 3 reports m = 1 for CPLEX and m = 2 for VNS/TS, both at distance 253.93. A single
+vehicle at that distance would have to chain the two routes through the depot station S0,
+and both orders violate time windows (arrival 388 and 382 at the depot, due 240; check with
+`evrptw check`). Our MILP also proves 2 vehicles optimal with 2 station copies. We therefore
+treat m = 1 as a typo and use m = 2.

@@ -223,6 +223,7 @@ __marimo__/
 # evrptw-solver
 build*/
 data/instances/
-results/raw/
-results/solutions/
+results/raw/*.log
+results/solutions*/
+results/traces/
 gurobi.log
