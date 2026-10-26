@@ -24,3 +24,5 @@ jobs:
             echo "$line"
             echo "$line" | awk -F, '{ if ($7 != 1) exit 1 }'
           done
+      - name: Cross-check published solutions (independent Python checker)
+        run: python3 analysis/verify_solutions.py results/best_solutions --data-dir data/instances
