@@ -1,4 +1,4 @@
 # instance r203C5
 # vehicles 1
-# distance 184.7005611
-D0 C25 S1 S1 C79 C50 S7 C49 S7 C96 D0
+# distance 179.0558908
+D0 S0 C25 S1 S1 C79 C50 S7 C49 S9 C96 D0

@@ -16,7 +16,7 @@ On the 92 standard benchmark instances of Schneider, Stenger & Goeke (2014), *Tr
 |---|---|
 | **Large instances (100 customers, 21 stations)** | The ILS matches the best-known **fleet size on 54 of 56 instances**, at an average distance **+0.17%** from the published best (best of 10 seeds × 30 s on a laptop). |
 | **Below the 2014 reference** | On **18 instances** the ILS finds a solution with the same fleet and a **shorter distance** than the values published in 2014, by up to −2.2% on r103. All of them are in [`results/best_solutions/`](results/best_solutions) and pass two independent checkers. |
-| **Exact model** | The Gurobi MILP proves optimality on 10 of the 36 small instances within 15 min on a single thread and matches the best-known value on 24. |
+| **Exact model** | The Gurobi MILP proves optimality on 20 of the 36 small instances (all 5-customer ones, in 54 s on average) on a single thread. The memetic GA finds the best-known solution on **all 36** in 5 s. |
 | **Bi-objective** | The fleet-vs-distance Pareto fronts show the cost of saving a van. On r201 the minimum of 3 vans costs **+18% distance** compared with 7 vans. |
 | **Reliability** | 1,876 runs, **0 infeasible**. Each output is re-simulated by a checker that shares no code with the search. |
 
@@ -121,7 +121,7 @@ one point.
 | Instances | 56 large (`*_21`) and 36 small (`*C5`, `*C10`, `*C15`), Schneider et al. (2014) |
 | Reference | [`data/bks.csv`](data/bks.csv). Each value is sourced (paper Tables 3–4) and corrections are documented in [`data/BKS_SOURCES.md`](data/BKS_SOURCES.md) |
 | Heuristics | ILS and GA, **10 seeds** per instance, fixed wall-clock budget (30 s large, 5 s small) |
-| MILP | small instances, 900 s, 3 station copies, 5 s ILS warm start |
+| MILP | small instances, single thread, 5 s ILS warm start: 2 copies / 600 s and 3 copies / 900 s |
 | Hardware | Intel i7-1185G7 (laptop), **1 thread per run**, 4 runs in parallel |
 | Distances | unrounded Euclidean |
 
@@ -153,15 +153,27 @@ around 2%, which is why 10 seeds are reported rather than one lucky run.
 
 ### Small instances (36): exact vs heuristics
 
-| Size | MILP proven optimal | MILP = BKS | ILS best = BKS fleet | GA best = BKS fleet |
-|---|---|---|---|---|
-| 5 customers | 7/12 | 9/12 | 12/12 | 12/12 |
-| 10 customers | 3/12 | 8/12 | 12/12 | 12/12 |
-| 15 customers | 0/12 | 7/12 | 11/12 | 11/12 |
+Number of instances where the method reaches the best-known solution (same fleet and
+distance). For the MILP, the table also gives how many runs were proven optimal.
 
-Branch-and-bound on the big-M formulation is the bottleneck: the heuristics find the
-best-known solutions in seconds, while the MILP often cannot close the gap in 15 min
-(Schneider et al. gave CPLEX 2 h).
+| Size | MILP, 2 copies (600 s): optimal / = BKS | MILP, 3 copies (900 s): optimal / = BKS | ILS (best of 10 × 5 s) | GA (best of 10 × 5 s) |
+|---|---|---|---|---|
+| 5 customers | 12 / 12 (avg 54 s) | 7 / 10 | 10 | **12** |
+| 10 customers | 8 / 8 | 3 / 8 | 7 | **12** |
+| 15 customers | 0 / 8 | 0 / 7 | 10 | **12** |
+
+- **The formulation matters more than the solver.** With 2 copies per station the
+  model is small and Gurobi proves 20 optima, but one of them (rc201C10) is optimal
+  only for the restricted model: the true best visits a charger three times. With 3
+  copies that error disappears, but the model is larger and only 10 instances are
+  proven optimal. This is a known weakness of station-duplication MILPs.
+- **The memetic GA finds every best-known small solution** in 5 s. The heuristics needed
+  *station-aware* move evaluation: on small instances, moving a customer only pays off if
+  the charger detour moves with it. Before this change the ILS missed the optimum of some
+  5-customer instances by up to 18% (raw data:
+  [`results/raw/small_before_station_aware.csv`](results/raw/small_before_station_aware.csv)).
+- The remaining ILS misses are routes that need **two chargers in a row** (e.g. `S15 S13`),
+  which a one-station repair cannot create.
 
 ### Pareto fronts: what does one fewer van cost?
 
@@ -183,7 +195,8 @@ C2) there is no trade-off at all.
 1. **"Optimal" is relative to the formulation.** With 2 copies per station, the MILP
    "proved" rc201C10 optimal at 414.81. The ILS then found 412.86, the published
    value, by visiting the depot charger S0 three times. The model now defaults to 3
-   copies and can be configured with `--opt copies=N`.
+   copies, configurable with `--opt copies=N`. The cost of the safer model is shown in
+   the small-instance table.
 2. **A typo in the reference table.** Schneider et al. list rc108C5 with 1 vehicle at
    253.93. That distance is only reachable with 2 vehicles: chaining the two routes
    through the depot charger arrives at the depot at t = 388, while its time window
@@ -222,4 +235,5 @@ Chaque solution est validée par un vérificateur indépendant.
 
 Résultats : l'ILS retrouve la flotte BKS sur 54 des 56 grandes instances, à +0,17 %
 de distance en moyenne. Sur 18 instances, elle passe sous les valeurs publiées en
-2014.
+2014. Le GA mémétique retrouve le BKS sur les 36 petites instances, et le PLNE en prouve
+20 optimales.
