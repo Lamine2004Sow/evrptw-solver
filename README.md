@@ -1,5 +1,7 @@
 # evrptw-solver
 
+[![CI](https://github.com/Lamine2004Sow/evrptw-solver/actions/workflows/ci.yml/badge.svg)](https://github.com/Lamine2004Sow/evrptw-solver/actions/workflows/ci.yml)
+
 **Electric delivery vans, customer time slots, limited batteries, and chargers.**
 This repository plans their routes. It solves small cases exactly with a MILP
 (Gurobi) and large ones with two metaheuristics written in modern C++: an Iterated
