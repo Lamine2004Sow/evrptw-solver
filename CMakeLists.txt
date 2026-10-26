@@ -43,6 +43,9 @@ add_executable(evrptw_cli apps/evrptw_cli.cpp)
 target_link_libraries(evrptw_cli PRIVATE evrptw)
 set_target_properties(evrptw_cli PROPERTIES OUTPUT_NAME evrptw)
 
+add_executable(evrptw_pareto apps/pareto.cpp)
+target_link_libraries(evrptw_pareto PRIVATE evrptw)
+
 # ---------------------------------------------------------------- tests
 if(BUILD_TESTS)
   include(FetchContent)
