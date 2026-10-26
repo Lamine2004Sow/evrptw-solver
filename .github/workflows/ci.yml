@@ -8,7 +8,7 @@ jobs:
   build-and-test:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Download instances
         run: bash scripts/download_data.sh
       - name: Configure (no Gurobi license on CI)

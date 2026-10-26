@@ -20,4 +20,5 @@ echo "$SHA256  $TMP/evrptw.zip" | sha256sum -c -
 unzip -q "$TMP/evrptw.zip" -d "$TMP"
 mkdir -p "$DEST"
 cp "$TMP"/evrptw_instances/*.txt "$DEST"/
+rm -f "$DEST/readme.txt"  # dataset description, not an instance
 echo "$(ls "$DEST" | grep -c '\.txt$') files in $DEST"
