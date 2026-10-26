@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download instances
+        run: bash scripts/download_data.sh
+      - name: Configure (no Gurobi license on CI)
+        run: cmake -S . -B build -DWITH_GUROBI=OFF -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build -j4
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure
+      - name: Smoke test — every greedy solution passes the checker
+        run: |
+          for f in data/instances/*.txt; do
+            line=$(./build/evrptw solve "$f" --method greedy)
+            echo "$line"
+            echo "$line" | awk -F, '{ if ($7 != 1) exit 1 }'
+          done

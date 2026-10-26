@@ -218,3 +218,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+.dual-graph/
+
+# evrptw-solver
+build*/
+data/instances/
+results/raw/
+results/solutions/
+gurobi.log
