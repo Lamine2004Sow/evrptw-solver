@@ -4,7 +4,9 @@
 //                 [--extra K] [--out front.csv]
 //
 // Method: solve unconstrained to get the minimum fleet m*, then solve with the fleet
-// capped at K = m*, ..., m*+extra. Every solution is re-checked, and only the
+// capped at K = m*, ..., m*+extra, minimising distance only under each cap
+// (objective=distance; with the default lexicographic objective every capped run
+// would shrink back to m* vehicles and the front would collapse to one point). Every solution is re-checked, and only the
 // non-dominated (vehicles, distance) points are kept.
 //
 // The front is small by nature: on these instances the fleet size only takes a few
@@ -98,6 +100,7 @@ int main(int argc, char** argv) {
 
         for (int k = mStar; k <= mStar + extra; ++k) {
             cfg.maxVehicles = k;
+            cfg.options["objective"] = "distance";  // min distance s.t. vehicles <= k
             const SolveResult res = solver->solve(inst, cfg);
             addIfValid(res, ("K=" + std::to_string(k)).c_str());
         }

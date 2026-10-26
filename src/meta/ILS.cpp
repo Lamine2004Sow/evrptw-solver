@@ -158,13 +158,18 @@ public:
 
     bool fleetOk(int vehicles) const { return maxVehicles_ <= 0 || vehicles <= maxVehicles_; }
 
+    // Distance-only mode (epsilon-constraint): the fleet only has to respect the cap.
+    void setDistanceOnly(bool d) { distanceOnly_ = d; }
+
     // Offers a solution; keeps it if it is feasible, within the cap and lexicographically better.
     bool offer(const Solution& sol, bool isFeasible) {
         if (!isFeasible) return false;
         const int veh = sol.numVehicles();
         if (!fleetOk(veh)) return false;
         const double dist = sol.distance(inst_);
-        if (have_ && !Solution::lexBetter(veh, dist, best_.numVehicles(), bestDist_)) return false;
+        const bool better = distanceOnly_ ? dist < bestDist_ - 1e-7
+                                          : Solution::lexBetter(veh, dist, best_.numVehicles(), bestDist_);
+        if (have_ && !better) return false;
         best_ = sol;
         bestDist_ = dist;
         have_ = true;
@@ -186,6 +191,7 @@ private:
     double bestDist_ = 0;
     bool have_ = false;
     bool verbose_ = false;
+    bool distanceOnly_ = false;
 };
 
 }  // namespace
@@ -198,6 +204,10 @@ SolveResult IteratedLocalSearch::solve(const Instance& inst, const SolverConfig&
     LocalSearch ls(inst);
     Incumbent incumbent(inst, cfg.maxVehicles, timer, result);
     incumbent.setVerbose(cfg.verbose);
+    // objective=distance: minimise distance under the fleet cap only (used for the
+    // Pareto front); default is the benchmark's lexicographic (vehicles, distance).
+    const bool distanceOnly = cfg.options.count("objective") && cfg.options.at("objective") == "distance";
+    incumbent.setDistanceOnly(distanceOnly);
 
     // Start from the greedy solution, polished by local search if that stays feasible.
     Solution cur = buildInitialSolution(inst, rng);
@@ -211,6 +221,7 @@ SolveResult IteratedLocalSearch::solve(const Instance& inst, const SolverConfig&
     RuinRecreate ruinRecreate(inst, ls);
     while (cur.numVehicles() > 1) {
         const bool mustReduce = cfg.maxVehicles > 0 && cur.numVehicles() > cfg.maxVehicles;
+        if (distanceOnly && !mustReduce) break;
         const double deadline = mustReduce ? limit : kPhaseAShare * limit;
         if (timer.elapsed() > deadline) break;
         bool reduced = ls.tryEliminateRoute(cur, rng, timer, deadline);
@@ -233,7 +244,8 @@ SolveResult IteratedLocalSearch::solve(const Instance& inst, const SolverConfig&
         ++iter;
         const double frac = timer.elapsed() / limit;
         Solution cand = ruinRecreate.perturb(cur, penalties.weights(), rng, touched);
-        ls.runFrom(cand, penalties.weights(), rng, cur.numVehicles(), touched);
+        const int routeCap = distanceOnly && cfg.maxVehicles > 0 ? cfg.maxVehicles : cur.numVehicles();
+        ls.runFrom(cand, penalties.weights(), rng, routeCap, touched);
         const bool candFeasible = cand.feasible(inst);
         penalties.record(candFeasible);
 
@@ -241,19 +253,21 @@ SolveResult IteratedLocalSearch::solve(const Instance& inst, const SolverConfig&
             const int vc = cand.numVehicles(), vu = cur.numVehicles();
             const double dc = cand.distance(inst), du = cur.distance(inst);
             const double slack = kAcceptShare * (1.0 - frac) * du;
-            if (vc < vu || (vc == vu && dc <= du + slack)) cur = cand;
+            if (distanceOnly ? (incumbent.fleetOk(vc) && dc <= du + slack)
+                             : (vc < vu || (vc == vu && dc <= du + slack)))
+                cur = cand;
             incumbent.offer(cand, true);
         }
 
         const bool overCap = cfg.maxVehicles > 0 && cur.numVehicles() > cfg.maxVehicles;
-        if (iter % kRetryEliminateEvery == 0 || overCap) {
+        if ((!distanceOnly && iter % kRetryEliminateEvery == 0) || overCap) {
             Solution trial = cur;
             if (ls.tryEliminateRoute(trial, rng, timer, limit)) {
                 cur = trial;
                 incumbent.offer(cur, true);
             }
         }
-        if (iter >= nextFleetAttempt && cur.numVehicles() > 1) {
+        if (!distanceOnly && iter >= nextFleetAttempt && cur.numVehicles() > 1) {
             if (reduceFleet(inst, ls, ruinRecreate, cur, rng, timer, limit, kFleetSearchIterationsB)) {
                 incumbent.offer(cur, true);
                 fleetGap = kFleetRetryEvery;
