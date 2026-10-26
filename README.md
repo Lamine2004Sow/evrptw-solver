@@ -42,7 +42,7 @@ break a time window.
 bash scripts/download_data.sh                      # 92 instances from Mendeley Data (checksum verified)
 cmake -S . -B build -DWITH_GUROBI=OFF              # ON (default) if GUROBI_HOME is set
 cmake --build build -j
-ctest --test-dir build                             # 18 unit tests
+ctest --test-dir build                             # 17 unit tests (18 with Gurobi)
 
 ./build/evrptw solve data/instances/r101_21.txt --method ils --time 30 --out sol.txt --header
 ./build/evrptw check data/instances/r101_21.txt sol.txt
