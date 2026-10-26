@@ -1,0 +1,4 @@
+# instance rc201C10
+# vehicles 1
+# distance 412.8613946
+D0 S9 C79 C43 S3 C62 S0 S0 C98 C14 S0 C93 C54 S0 C88 S15 S15 C22 C81 D0

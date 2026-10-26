@@ -1,0 +1,5 @@
+# instance r104C5
+# vehicles 2
+# distance 136.6897468
+D0 S0 C5 C99 C87 D0
+D0 C1 S3 C71 D0

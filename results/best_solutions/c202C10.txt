@@ -1,0 +1,4 @@
+# instance c202C10
+# vehicles 1
+# distance 304.0583321
+D0 C8 C10 S1 C84 C16 S7 C25 S0 C96 S15 C57 S13 C6 C30 C24 D0
